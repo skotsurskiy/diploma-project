@@ -11,6 +11,10 @@ name: diploma
 services:
   postgres:
     image: postgres:17
+    # Константа стенду: synchronous_commit=off прибирає очікування fsync на кожен
+    # commit. Так binding-обмеженням лишаються потоки/архітектура застосунку, а не
+    # дискова латентність БД. Значення однакове в усіх фазах → на порівняння не впливає.
+    command: ["postgres", "-c", "synchronous_commit=off"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -65,7 +69,9 @@ services:
       # Фаза 3.1 (baseline): платформні потоки. У Фазі 3.2 → "true".
       SPRING_THREADS_VIRTUAL_ENABLED: "false"
     ports:
-      - "8080:8080"
+      # Хост-порт 8080 зайнятий локальним процесом, тож публікуємо на 18080.
+      # Усередині docker-мережі сервіс лишається на 8080 (k6 б'є саме туди).
+      - "18080:8080"
     depends_on:
       postgres:
         condition: service_healthy

@@ -8,7 +8,13 @@
       "Bash(gradle -version)",
       "Bash(./mvnw -B -DskipTests clean compile)",
       "Bash(k6 version *)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(docker manifest *)",
+      "Bash(docker network *)",
+      "PowerShell(Write-Output \"=== containers ===\"; docker ps --format \"{{.Names}}`t{{.Status}}`t{{.Ports}}\"; Write-Output \"=== who holds :8080 ===\"; $c = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | ForEach-Object { $p = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue; \"PID $\\($_.OwningProcess\\)  $\\($p.ProcessName\\)  $\\($p.Path\\)\" } } else { \"nothing listening on 8080\" })",
+      "Bash(./mvnw -q -pl order-service dependency:tree)",
+      "Bash(python -c ' *)",
+      "PowerShell(docker run *)"
     ]
   }
 }

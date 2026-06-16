@@ -20,7 +20,10 @@ server:
   port: 8081
   tomcat:
     threads:
-      max: 200
+      # Контрольована змінна стенду (фіксована для всіх фаз): 50 платформних потоків.
+      max: 50
+    accept-count: 100
+    max-connections: 150
 
 payment:
   processing-delay-ms: ${PAYMENT_DELAY_MS:200}

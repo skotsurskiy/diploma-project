@@ -20,7 +20,11 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const PEAK_RPS = parseInt(__ENV.PEAK_RPS || '1000', 10);
 
-const errors = new Counter('business_errors');
+// Розбивка результатів за статусом — для наочної статистики у звіті/скріншоті.
+const outcomeSuccess = new Counter('outcome_success_201');     // успішно оброблено
+const outcomeRejected5xx = new Counter('outcome_rejected_5xx'); // сервер відмовив (503 тощо)
+const outcomeConnFail = new Counter('outcome_conn_timeout');    // відмова/timeout з'єднання (status 0)
+const outcomeOther = new Counter('outcome_other');              // інші коди
 
 export const options = {
   scenarios: {
@@ -55,12 +59,23 @@ export default function () {
 
   const res = http.post(`${BASE_URL}/orders`, payload, params);
 
-  const ok = check(res, {
-    'status is 201': (r) => r.status === 201,
-  });
-  if (!ok) {
-    errors.add(1);
+  // Категоризація результату для статистики у звіті.
+  if (res.status === 201) {
+    outcomeSuccess.add(1);
+  } else if (res.status >= 500 && res.status < 600) {
+    outcomeRejected5xx.add(1);
+  } else if (res.status === 0) {
+    // status 0 у k6 = з'єднання не встановлено / розірвано (dial timeout, reset).
+    outcomeConnFail.add(1);
+  } else {
+    outcomeOther.add(1);
   }
+
+  check(res, {
+    'успішно (HTTP 201)': (r) => r.status === 201,
+    'відмова сервера (HTTP 5xx)': (r) => r.status >= 500 && r.status < 600,
+    "відмова з'єднання / timeout (status 0)": (r) => r.status === 0,
+  });
 }
 
 export function handleSummary(data) {

@@ -7,7 +7,6 @@ import com.kts.payment.web.dto.PaymentRequest;
 import com.kts.payment.web.dto.PaymentResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PaymentService {
@@ -22,10 +21,16 @@ public class PaymentService {
         this.repository = repository;
     }
 
-    @Transactional
     public PaymentResponse process(PaymentRequest request) {
+        // Імітація виклику зовнішнього платіжного шлюзу. Свідомо ПОЗА транзакцією
+        // БД: тримати з'єднання HikariCP протягом затримки провайдера — антипатерн
+        // (інакше payment упирається в пул=20 → стеля 100 RPS незалежно від
+        // кількості потоків). Без цього binding-обмеженням стенду стають саме
+        // платформні потоки Tomcat.
         simulateProviderLatency();
 
+        // save() виконується у власній короткій транзакції (Spring Data) —
+        // з'єднання утримується лише на час самого INSERT.
         Payment payment = new Payment(request.orderId(), request.amount(), PaymentStatus.APPROVED);
         Payment saved = repository.save(payment);
 
