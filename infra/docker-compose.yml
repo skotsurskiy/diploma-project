@@ -1,0 +1,81 @@
+# Локальне середовище, що імітує продакшн із обмеженими ресурсами.
+# Ліміти CPU/пам'яті задані навмисно невеликими, щоб baseline-архітектура
+# гарантовано демонструвала каскадну відмову під навантаженням (Фаза 3.1),
+# а результати тестів були відтворюваними.
+#
+# Запуск:   docker compose -f infra/docker-compose.yml up --build
+# Зупинка:  docker compose -f infra/docker-compose.yml down -v
+
+name: diploma
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./postgres/init-multiple-dbs.sql:/docker-entrypoint-initdb.d/init-multiple-dbs.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  payment-service:
+    build:
+      context: ..
+      dockerfile: payment-service/Dockerfile
+    environment:
+      PAYMENT_DB_URL: jdbc:postgresql://postgres:5432/paymentdb
+      PAYMENT_DB_USER: payment
+      PAYMENT_DB_PASSWORD: payment
+      PAYMENT_DELAY_MS: "200"
+      SPRING_THREADS_VIRTUAL_ENABLED: "false"
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+  order-service:
+    build:
+      context: ..
+      dockerfile: order-service/Dockerfile
+    environment:
+      ORDER_DB_URL: jdbc:postgresql://postgres:5432/orderdb
+      ORDER_DB_USER: order
+      ORDER_DB_PASSWORD: order
+      ORDER_DB_POOL: "10"
+      PAYMENT_SERVICE_URL: http://payment-service:8081
+      # Фаза 3.1 (baseline): платформні потоки. У Фазі 3.2 → "true".
+      SPRING_THREADS_VIRTUAL_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+
+volumes:
+  pgdata:

@@ -1,0 +1,7 @@
+**/target/
+.git/
+.idea/
+*.iml
+HELP.md
+load-tests/results/
+.mvn/wrapper/maven-wrapper.jar
