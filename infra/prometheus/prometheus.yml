@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Метрики застосунків (JVM, Tomcat, HikariCP) через Spring Boot Actuator.
+  - job_name: order-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['order-service:8080']
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['payment-service:8081']
+
+# Метрики k6 надходять через remote-write (прапор --web.enable-remote-write-receiver),
+# endpoint: http://prometheus:9090/api/v1/write

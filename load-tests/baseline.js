@@ -79,9 +79,12 @@ export default function () {
 }
 
 export function handleSummary(data) {
+  // Зберігаємо звіт під іменем фази: -e REPORT=3.2.1-virtual-threads
+  // → load-tests/reports/3.2.1-virtual-threads.{html,json}.
+  const name = __ENV.REPORT || 'summary';
   return {
-    'summary.html': htmlReport(data),
-    'summary.json': JSON.stringify(data, null, 2),
+    [`reports/${name}.html`]: htmlReport(data),
+    [`reports/${name}.json`]: JSON.stringify(data, null, 2),
     stdout: textSummary(data, { indent: ' ', enableColors: true }),
   };
 }

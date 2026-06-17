@@ -32,6 +32,32 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <!-- Resilience4j (core, програмне використання — без Spring Boot starter,
+         щоб гарантувати сумісність зі Spring Boot 4). Circuit Breaker для
+         захисту order від деградації payment (Фаза 3.2.2). -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-circuitbreaker</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <!-- Bulkhead (семафорна ізоляція доступу до БД) — Фаза 3.2.3. -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-bulkhead</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <!-- Експорт стану Circuit Breaker у Micrometer/Prometheus (для дашборда). -->
+    <dependency>
+      <groupId>io.github.resilience4j</groupId>
+      <artifactId>resilience4j-micrometer</artifactId>
+      <version>2.3.0</version>
+    </dependency>
+    <!-- /actuator/prometheus — щоб Prometheus міг скрейпити app-метрики. -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+      <scope>runtime</scope>
+    </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>

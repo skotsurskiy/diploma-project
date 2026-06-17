@@ -4,56 +4,66 @@ import com.kts.order.client.PaymentClient;
 import com.kts.order.client.dto.PaymentRequest;
 import com.kts.order.client.dto.PaymentResponse;
 import com.kts.order.domain.Order;
-import com.kts.order.domain.OrderStatus;
-import com.kts.order.repository.OrderRepository;
 import com.kts.order.web.dto.CreateOrderRequest;
 import com.kts.order.web.dto.OrderResponse;
+import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * Baseline-сценарій (Фаза 3.1): синхронна обробка замовлення.
+ * Оркестрація обробки замовлення.
  * <p>
- * 1. Зберігаємо замовлення у статусі PENDING (коротка транзакція).
- * 2. Синхронно (блокуючи ПОТІК) звертаємось до PaymentService.
- * 3. Оновлюємо статус за результатом платежу (коротка транзакція).
+ * Доступ до БД (через {@link OrderPersistenceService}) захищено семафорним
+ * Bulkhead (Фаза 3.2.3): одночасних звернень до БД не більше, ніж дозволяє
+ * семафор (8 < пулу HikariCP 10), тож пул не вичерпується, а надлишок —
+ * швидка відмова {@link DbBusyException} → HTTP 503.
  * <p>
- * Важливо: HTTP-виклик до стороннього сервісу свідомо винесено ЗА МЕЖІ
- * транзакції БД. Утримувати з'єднання HikariCP протягом мережевого виклику —
- * антипатерн: пул вичерпується вже за ~50 RPS, і вузьким місцем стає БД, а не
- * потоки. Винісши виклик назовні, кожен запит тримає з'єднання лише на короткі
- * save/update, тому в 3.1 binding-обмеженням лишаються саме потоки Tomcat.
- * <p>
- * Платою за це є втрата атомарності: якщо payment впаде, замовлення лишиться у
- * статусі PENDING (узгодженість «зрештою» не гарантована). Правильне рішення —
- * патерн Transactional Outbox (запис події в ту ж БД однією транзакцією) разом
- * із Сагою — впроваджується у Розділі 3.4.
+ * HTTP-виклик payment лишається поза транзакцією БД і захищений Circuit Breaker
+ * (3.2.2). Перемикач {@code order.bulkhead.enabled} дозволяє контрольне
+ * порівняння «з bulkhead / без».
  */
 @Service
 public class OrderService {
 
-    private final OrderRepository orderRepository;
+    private final OrderPersistenceService persistence;
     private final PaymentClient paymentClient;
+    private final Bulkhead dbBulkhead;
+    private final boolean bulkheadEnabled;
 
-    public OrderService(OrderRepository orderRepository, PaymentClient paymentClient) {
-        this.orderRepository = orderRepository;
+    public OrderService(OrderPersistenceService persistence, PaymentClient paymentClient,
+            Bulkhead dbBulkhead,
+            @Value("${order.bulkhead.enabled:true}") boolean bulkheadEnabled) {
+        this.persistence = persistence;
         this.paymentClient = paymentClient;
+        this.dbBulkhead = dbBulkhead;
+        this.bulkheadEnabled = bulkheadEnabled;
     }
 
     public OrderResponse createOrder(CreateOrderRequest request) {
-        // Крок 1: зберігаємо замовлення (PENDING). Власна коротка транзакція —
-        // з'єднання БД одразу повертається в пул.
-        Order order = orderRepository.save(new Order(request.customer(), request.amount()));
+        // Крок 1: збереження PENDING — доступ до БД через bulkhead.
+        Order order = db(() -> persistence.createPending(request));
 
-        // Крок 2: блокуючий виклик платежу. Тримається лише ПОТІК Tomcat,
-        // з'єднання БД у пулі вільне.
+        // Крок 2: блокуючий виклик payment (Circuit Breaker), поза транзакцією БД.
         PaymentResponse payment = paymentClient.charge(
                 new PaymentRequest(order.getId(), order.getAmount()));
 
-        // Крок 3: оновлюємо статус. Знову коротка транзакція (merge → UPDATE).
-        order.setPaymentId(payment.paymentId());
-        order.setStatus("APPROVED".equals(payment.status()) ? OrderStatus.PAID : OrderStatus.FAILED);
-        order = orderRepository.save(order);
+        // Крок 3: оновлення статусу — знову через bulkhead.
+        Order finalOrder = db(() -> persistence.markResult(order.getId(), payment));
 
-        return OrderResponse.from(order);
+        return OrderResponse.from(finalOrder);
+    }
+
+    /** Виконує операцію з БД під захистом семафора Bulkhead (якщо ввімкнено). */
+    private <T> T db(Supplier<T> operation) {
+        if (!bulkheadEnabled) {
+            return operation.get();
+        }
+        try {
+            return Bulkhead.decorateSupplier(dbBulkhead, operation).get();
+        } catch (BulkheadFullException e) {
+            throw new DbBusyException("DB bulkhead full — fast reject", e);
+        }
     }
 }

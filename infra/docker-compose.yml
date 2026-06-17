@@ -43,8 +43,11 @@ services:
       PAYMENT_DB_URL: jdbc:postgresql://postgres:5432/paymentdb
       PAYMENT_DB_USER: payment
       PAYMENT_DB_PASSWORD: payment
-      PAYMENT_DELAY_MS: "200"
-      SPRING_THREADS_VIRTUAL_ENABLED: "false"
+      # Стандарт стенду — 200 мс. Для fault-injection (демо деградації payment)
+      # перевизначається: PAYMENT_DELAY_MS=2000 docker compose up -d payment-service
+      PAYMENT_DELAY_MS: "${PAYMENT_DELAY_MS:-200}"
+      # Фаза 3.2.1: віртуальні потоки і на payment (інакше його пул 50 стане стелею).
+      SPRING_THREADS_VIRTUAL_ENABLED: "true"
     ports:
       - "8081:8081"
     depends_on:
@@ -66,8 +69,14 @@ services:
       ORDER_DB_PASSWORD: order
       ORDER_DB_POOL: "10"
       PAYMENT_SERVICE_URL: http://payment-service:8081
-      # Фаза 3.1 (baseline): платформні потоки. У Фазі 3.2 → "true".
-      SPRING_THREADS_VIRTUAL_ENABLED: "false"
+      # Фаза 3.2.1: ВІРТУАЛЬНІ потоки (незалежна змінна). Прибирає ліміт пулу
+      # платформних потоків (50). Решта стенду незмінна.
+      SPRING_THREADS_VIRTUAL_ENABLED: "true"
+      # Фаза 3.2.2: перемикач Timeout+CircuitBreaker (для порівняння «з CB / без CB»).
+      PAYMENT_RESILIENCE_ENABLED: "${PAYMENT_RESILIENCE_ENABLED:-true}"
+      # Фаза 3.2.3: Bulkhead доступу до БД + імітація повільного запиту.
+      ORDER_BULKHEAD_ENABLED: "${ORDER_BULKHEAD_ENABLED:-true}"
+      ORDER_DB_WORK_DELAY_MS: "${ORDER_DB_WORK_DELAY_MS:-0}"
     ports:
       # Хост-порт 8080 зайнятий локальним процесом, тож публікуємо на 18080.
       # Усередині docker-мережі сервіс лишається на 8080 (k6 б'є саме туди).
@@ -83,5 +92,33 @@ services:
           cpus: "2.0"
           memory: 1G
 
+  # --- Спостережуваність: k6 → Prometheus → Grafana ---
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+      - --enable-feature=native-histograms
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   pgdata:
+  grafana-data:

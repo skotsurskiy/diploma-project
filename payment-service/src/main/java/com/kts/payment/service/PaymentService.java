@@ -13,12 +13,25 @@ public class PaymentService {
 
     private final PaymentRepository repository;
 
-    /** Імітація часу взаємодії з зовнішнім платіжним провайдером (мс). */
-    @Value("${payment.processing-delay-ms:200}")
-    private long processingDelayMs;
+    /**
+     * Імітація часу взаємодії з зовнішнім платіжним провайдером (мс).
+     * volatile + сетер — щоб міняти затримку в рантаймі (fault injection без
+     * рестарту контейнера), див. AdminController.
+     */
+    private volatile long processingDelayMs;
 
-    public PaymentService(PaymentRepository repository) {
+    public PaymentService(PaymentRepository repository,
+            @Value("${payment.processing-delay-ms:200}") long processingDelayMs) {
         this.repository = repository;
+        this.processingDelayMs = processingDelayMs;
+    }
+
+    public long getProcessingDelayMs() {
+        return processingDelayMs;
+    }
+
+    public void setProcessingDelayMs(long processingDelayMs) {
+        this.processingDelayMs = processingDelayMs;
     }
 
     public PaymentResponse process(PaymentRequest request) {
