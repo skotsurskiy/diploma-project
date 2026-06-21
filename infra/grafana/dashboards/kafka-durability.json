@@ -1,0 +1,106 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Прийом замовлень (order публікує подію → 202) проти завершення (payment опрацював і повернув подію). Коли payment «спить», зелена лінія завершень падає до 0, а синя лінія прийому не зупиняється — замовлення продовжують приймати й складати в брокер. Після пробудження зелена лінія стрибає вище за синю: сервіс вичерпує накопичений backlog.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" },
+          "unit": "reqps"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "прийнято (accept → 202)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } } ] },
+          { "matcher": { "id": "byName", "options": "завершено (PAID)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(orders_accepted_total{method=\"kafka\"}[15s]))", "legendFormat": "прийнято (accept → 202)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(orders_completed_total{method=\"kafka\"}[15s]))", "legendFormat": "завершено (PAID)", "refId": "B" }
+      ],
+      "title": "① Темп прийому проти темпу завершення (подій/с)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Backlog: скільки замовлень прийнято, але ще не завершено (accepted − completed). Це події, що «висять» у брокері. Поки payment спить — гора росте. Після пробудження — стікає назад до 0. Повернення до 0 означає, що жодне замовлення не загубилося.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 30, "lineWidth": 2, "showPoints": "never", "gradientMode": "opacity" },
+          "unit": "short", "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 9 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["max", "lastNotNull"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_pending", "legendFormat": "backlog (очікують оплати)", "refId": "A" }
+      ],
+      "title": "② Backlog у брокері — накопичення під час «сну» і дренаж після пробудження",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Накопичувальні лічильники. Сині й зелені лінії розходяться, поки payment спить (прийнято росте, завершено стоїть), а потім сходяться знову, коли backlog вичерпано. Збіг ліній наприкінці = 0 втрачених замовлень.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "усього прийнято" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } } ] },
+          { "matcher": { "id": "byName", "options": "усього завершено" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_accepted_total{method=\"kafka\"}", "legendFormat": "усього прийнято", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_completed_total{method=\"kafka\"}", "legendFormat": "усього завершено", "refId": "B" }
+      ],
+      "title": "③ Накопичувальні підсумки — лінії сходяться = нічого не втрачено",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Поточний backlog як одне число. Під час сну — більше нуля; коли система наздогнала — рівно 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": 0 }, { "color": "orange", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 25 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_pending", "legendFormat": "Незавершених зараз", "refId": "A" }
+      ],
+      "title": "④ Незавершених замовлень зараз (має повернутись до 0)",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["kafka", "durability", "resilience"],
+  "templating": { "list": [] },
+  "time": { "from": "now-10m", "to": "now" },
+  "timezone": "",
+  "title": "Kafka — Durability & Backlog Recovery",
+  "uid": "kafka-durability",
+  "version": 1
+}

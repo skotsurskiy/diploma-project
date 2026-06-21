@@ -8,6 +8,7 @@ import com.kts.order.web.dto.CreateOrderRequest;
 import com.kts.order.web.dto.OrderResponse;
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.bulkhead.BulkheadFullException;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,10 @@ public class OrderService {
         this.paymentClient = paymentClient;
         this.dbBulkhead = dbBulkhead;
         this.bulkheadEnabled = bulkheadEnabled;
+    }
+
+    public Optional<OrderResponse> getOrder(Long id) {
+        return persistence.find(id).map(OrderResponse::from);
     }
 
     public OrderResponse createOrder(CreateOrderRequest request) {

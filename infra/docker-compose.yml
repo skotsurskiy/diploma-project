@@ -48,11 +48,14 @@ services:
       PAYMENT_DELAY_MS: "${PAYMENT_DELAY_MS:-200}"
       # Фаза 3.2.1: віртуальні потоки і на payment (інакше його пул 50 стане стелею).
       SPRING_THREADS_VIRTUAL_ENABLED: "true"
+      KAFKA_BOOTSTRAP: kafka:9092
     ports:
       - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -77,6 +80,7 @@ services:
       # Фаза 3.2.3: Bulkhead доступу до БД + імітація повільного запиту.
       ORDER_BULKHEAD_ENABLED: "${ORDER_BULKHEAD_ENABLED:-true}"
       ORDER_DB_WORK_DELAY_MS: "${ORDER_DB_WORK_DELAY_MS:-0}"
+      KAFKA_BOOTSTRAP: kafka:9092
     ports:
       # Хост-порт 8080 зайнятий локальним процесом, тож публікуємо на 18080.
       # Усередині docker-мережі сервіс лишається на 8080 (k6 б'є саме туди).
@@ -85,6 +89,8 @@ services:
       postgres:
         condition: service_healthy
       payment-service:
+        condition: service_started
+      kafka:
         condition: service_started
     deploy:
       resources:
@@ -118,6 +124,45 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+
+  # --- Apache Kafka (KRaft, без Zookeeper) — Розділ 3.3 ---
+  kafka:
+    image: apache/kafka:4.0.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: "PLAINTEXT://kafka:9092,CONTROLLER://kafka:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # 12 партицій → до 12 паралельних споживачів у групі payment-service.
+      # Інакше payment (200 мс/подія) обробляв би послідовно ~5 подій/с і не
+      # встигав би за прийомом (Розділ 3.3.3, тест durability).
+      KAFKA_NUM_PARTITIONS: 12
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    ports:
+      - "8090:8080"
+    depends_on:
+      - kafka
 
 volumes:
   pgdata:

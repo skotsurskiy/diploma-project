@@ -1,0 +1,162 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "ГОЛОВНА панель. Кількість замовлень у статусі PENDING у БД (джерело істини, не пам'ять). Поки Kafka недоступна, dual-write комітить замовлення, але втрачає подію → PENDING росте. БЕЗ Outbox ця лінія НЕ повертається до 0 навіть після відновлення Kafka — замовлення осиротіли назавжди. З Outbox relay допублікує події й лінія стікає до 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 25, "lineWidth": 2, "showPoints": "never", "gradientMode": "opacity" },
+          "unit": "short", "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["max", "lastNotNull"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_db_pending", "legendFormat": "PENDING у БД (осиротілі)", "refId": "A" }
+      ],
+      "title": "① Осиротілі замовлення — PENDING у БД (без Outbox не дренажується)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Темп невдалих публікацій: подію не вдалося відправити в Kafka ПІСЛЯ коміту замовлення (dual-write). Кожен сплеск тут = замовлення, що осиротіло. З Outbox публікація винесена в relay з ретраями → цей лічильник лишається 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "custom": { "drawStyle": "line", "fillOpacity": 30, "lineWidth": 2, "showPoints": "never" },
+          "unit": "reqps", "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 9 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["max"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(orders_publish_failed_total[15s]))", "legendFormat": "невдалі публікації /с", "refId": "A" }
+      ],
+      "title": "② Втрати dual-write — невдалі публікації подій (подій/с)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Прийом (успішні 202) проти завершення (PAID). Під час відмови Kafka прийом провалюється (зелена падає), бо публікація синхронна й кидає помилку. Завершення теж стоїть. Після відновлення прийом повертається, але осиротілі замовлення з вікна відмови НЕ завершаться (без Outbox).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "lineWidth": 2, "showPoints": "never" },
+          "unit": "reqps"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "прийнято (202)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } } ] },
+          { "matcher": { "id": "byName", "options": "завершено (PAID)" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } } ] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "id": 3,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(orders_accepted_total{method=\"kafka\"}[15s]))", "legendFormat": "прийнято (202)", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(orders_completed_total{method=\"kafka\"}[15s]))", "legendFormat": "завершено (PAID)", "refId": "B" }
+      ],
+      "title": "③ Прийом проти завершення (подій/с)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Осиротілих зараз (PENDING у БД). Має бути 0 у здоровій системі. Якщо >0 після відновлення Kafka — це безповоротно втрачені замовлення (без Outbox).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": 0 }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 24 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "orders_db_pending", "legendFormat": "Осиротілих зараз", "refId": "A" }
+      ],
+      "title": "④ Осиротілих замовлень зараз",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "Сумарно втрачених публікацій за весь прогін (dual-write). З Outbox = 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": 0 }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 24 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "center", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "value_and_name" },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(orders_publish_failed_total)", "legendFormat": "Невдалих публікацій усього", "refId": "A" }
+      ],
+      "title": "⑤ Невдалих публікацій усього (dual-write втрати)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "ТІЛЬКИ для версії з Outbox (3.4.2). Довговічний буфер: неопубліковані події, що чекають у таблиці outbox. За відмови Kafka росте (події надійно лежать у БД, а не губляться), після відновлення relay дренажує його до 0. Дзеркало backlog'у з 3.3.3, але на боці ВИРОБНИКА. У версії без Outbox (3.4.1) цей графік порожній — таблиці outbox не існувало.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 25, "lineWidth": 2, "showPoints": "never", "gradientMode": "opacity" },
+          "unit": "short", "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["max", "lastNotNull"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "outbox_pending", "legendFormat": "outbox: неопубліковані події (довговічний буфер)", "refId": "A" }
+      ],
+      "title": "⑥ [Outbox] Довговічний буфер — накопичення під час відмови, дренаж після",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "description": "ТІЛЬКИ для версії з Outbox (3.4.2). Темп публікації relay-ем подій з outbox у Kafka. Під час відмови Kafka падає до 0 (relay не може відправити, але й не втрачає), після відновлення стрибає вгору — relay вичерпує накопичений буфер.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" },
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2, "showPoints": "never" },
+          "unit": "reqps", "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 38 },
+      "id": 7,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "single" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(outbox_published_total[15s]))", "legendFormat": "relay публікує (подій/с)", "refId": "A" }
+      ],
+      "title": "⑦ [Outbox] Темп публікації relay (подій/с)",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["kafka", "outbox", "dual-write", "resilience"],
+  "templating": { "list": [] },
+  "time": { "from": "now-15m", "to": "now" },
+  "timezone": "",
+  "title": "Outbox — Dual-Write Problem & Fix",
+  "uid": "outbox-dualwrite",
+  "version": 1
+}

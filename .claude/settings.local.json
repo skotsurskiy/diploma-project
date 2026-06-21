@@ -42,7 +42,20 @@
       "Bash(curl -s 'http://localhost:9090/api/v1/query' --data-urlencode 'query=time\\(\\)')",
       "Bash(sed -nE 's/.*\\\\[\\([0-9.]+\\),.*/\\\\1/p')",
       "Bash(curl -s 'http://localhost:9090/api/v1/query' --data-urlencode 'query=timestamp\\(hikaricp_connections_active{job=\"order-service\"}\\)')",
-      "PowerShell(Write-Output \"=== WSL distros ===\"; wsl -l -v; Write-Output \"=== before: docker-desktop date ===\"; wsl -d docker-desktop -e date -u; Write-Output \"=== sync hwclock ===\"; wsl -d docker-desktop -e hwclock -s 2>&1; Write-Output \"=== after: docker-desktop date ===\"; wsl -d docker-desktop -e date -u)"
+      "PowerShell(Write-Output \"=== WSL distros ===\"; wsl -l -v; Write-Output \"=== before: docker-desktop date ===\"; wsl -d docker-desktop -e date -u; Write-Output \"=== sync hwclock ===\"; wsl -d docker-desktop -e hwclock -s 2>&1; Write-Output \"=== after: docker-desktop date ===\"; wsl -d docker-desktop -e date -u)",
+      "Bash(xargs -I{} unzip -l {})",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose -f infra/docker-compose.yml up -d kafka)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose -f infra/docker-compose.yml up -d --build order-service payment-service postgres prometheus grafana kafka-ui)",
+      "Bash(curl -s http://localhost:18080/orders/1)",
+      "Bash(curl -s http://localhost:8081/actuator/prometheus)",
+      "Bash(curl -s \"http://localhost:9090/api/v1/query?query=orders_pending\")",
+      "Bash(curl -s \"http://localhost:3000/api/search?query=Kafka\")",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose -f infra/docker-compose.yml up -d --force-recreate kafka)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose -f infra/docker-compose.yml up -d --build --force-recreate order-service payment-service)",
+      "Bash(MSYS_NO_PATHCONV=1 docker compose -f infra/docker-compose.yml up -d --build order-service)",
+      "Bash(curl -s -o /tmp/r.txt -w \"HTTP %{http_code}  time=%{time_total}s\\\\n\" -X POST http://localhost:18080/orders/kafka -H \"Content-Type: application/json\" -d '{\"customer\":\"dualwrite-test\",\"amount\":77}')",
+      "Bash(curl -s http://localhost:18080/actuator/health)",
+      "Bash(curl -s -o /dev/null -w \"POST /orders/kafka: HTTP %{http_code}\\\\n\" -X POST http://localhost:18080/orders/kafka -H \"Content-Type: application/json\" -d '{\"customer\":\"outbox-smoke\",\"amount\":15}')"
     ]
   }
 }
